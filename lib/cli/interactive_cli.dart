@@ -2,14 +2,15 @@ import 'dart:io';
 import '../generator/json_parser.dart';
 import '../generator/model_builder.dart';
 import '../generator/model_registry.dart';
+import '../generator/service_generator.dart';
+import '../generator/repository_generator.dart';
 import '../writer/dart_writer.dart';
 import '../utils/string_utils.dart';
 import 'package:path/path.dart' as p;
 
 class InteractiveCLI {
   void start() {
-    print('-----------------------------------------');
-    print('   Flutter JSON Model Generator CLI   ');
+    print('🚀 Flutter API Model Generator');
     print('-----------------------------------------');
 
     // 1. Get JSON file path
@@ -23,6 +24,7 @@ class InteractiveCLI {
     dynamic json;
     try {
       json = JsonParser.parseFile(jsonPath);
+      print('JSON file detected: $jsonPath');
     } catch (e) {
       print('Error: $e');
       return;
@@ -30,26 +32,31 @@ class InteractiveCLI {
 
     // 3. Get Model Name
     stdout.write('Enter model name: ');
-    String? modelName = stdin.readLineSync()?.trim();
-    if (modelName == null || modelName.isEmpty) {
+    String? modelNameInput = stdin.readLineSync()?.trim();
+    if (modelNameInput == null || modelNameInput.isEmpty) {
       print('Model name is required!');
       return;
     }
-    modelName = StringUtils.capitalize(modelName);
+    final modelName = StringUtils.capitalize(modelNameInput);
 
-    // 4. Get Output Directory
-    stdout.write('Enter output folder (default: lib/models): ');
-    String? outputDir = stdin.readLineSync()?.trim();
-    if (outputDir == null || outputDir.isEmpty) {
-      outputDir = 'lib/models';
-    }
+    // 4. Get Options
+    print('\nWhat do you want to generate?');
+    print('1. Model');
+    print('2. Model + Service');
+    print('3. Model + Service + Repository');
+    stdout.write('Choice (1-3, default: 1): ');
+    String? choice = stdin.readLineSync()?.trim();
+    if (choice == null || choice.isEmpty) choice = '1';
 
-    // 5. Generate Models
+    // 5. Generate
     try {
       final registry = ModelRegistry();
       final baseObject = JsonParser.extractBaseObject(json);
-      final baseBuilder = ModelBuilder(modelName, baseObject, registry);
+      final isList = json is List;
       
+      // Models Generation
+      final outputDir = 'lib/models';
+      final baseBuilder = ModelBuilder(modelName, baseObject, registry);
       final allModels = baseBuilder.getAllModels();
       
       for (var model in allModels) {
@@ -63,12 +70,37 @@ class InteractiveCLI {
         registry.markProcessed(model.modelName);
       }
 
+      final baseModelFileName = StringUtils.camelToSnake(modelName);
+
+      // Service Generation
+      if (choice == '2' || choice == '3') {
+        final serviceGen = ServiceGenerator(
+          modelName: modelName,
+          isList: isList,
+          modelFileName: baseModelFileName,
+        );
+        final serviceCode = serviceGen.build();
+        final serviceFileName = StringUtils.camelToSnake('${modelName}Service');
+        DartWriter.write('lib/services/$serviceFileName.dart', serviceCode);
+      }
+
+      // Repository Generation
+      if (choice == '3') {
+        final repoGen = RepositoryGenerator(
+          modelName: modelName,
+          isList: isList,
+          modelFileName: baseModelFileName,
+        );
+        final repoCode = repoGen.build();
+        final repoFileName = StringUtils.camelToSnake('${modelName}Repository');
+        DartWriter.write('lib/repositories/$repoFileName.dart', repoCode);
+      }
+
       print('-----------------------------------------');
-      print('Success! Model generation complete.');
-      print('Files created in: $outputDir');
+      print('Success! Generation complete.');
       print('-----------------------------------------');
     } catch (e) {
-      print('Failed to generate models: $e');
+      print('Failed to generate: $e');
     }
   }
 }
