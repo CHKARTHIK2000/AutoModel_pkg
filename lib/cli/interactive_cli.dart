@@ -15,22 +15,14 @@ class InteractiveCLI {
 
   InteractiveCLI(this.config);
 
-  void start(List<String> arguments) {
+  /// Default interactive mode
+  void startInteractive() {
     print('🚀 Flutter API Model Generator');
     print('-----------------------------------------');
 
-    final isGenerateCommand = arguments.contains('generate');
-    final hasConfig = ConfigLoader.exists();
-
     // 1. Get JSON file path
-    String? jsonPath;
-    if (isGenerateCommand && hasConfig) {
-      jsonPath = 'response.json'; // Default for generate command
-    } else {
-      stdout.write('Enter JSON file path (default: response.json): ');
-      jsonPath = stdin.readLineSync()?.trim();
-    }
-    
+    stdout.write('Enter JSON file path (default: response.json): ');
+    String? jsonPath = stdin.readLineSync()?.trim();
     if (jsonPath == null || jsonPath.isEmpty) {
       jsonPath = 'response.json';
     }
@@ -39,59 +31,103 @@ class InteractiveCLI {
     dynamic json;
     try {
       json = JsonParser.parseFile(jsonPath);
-      print('JSON file detected: $jsonPath');
+      print('✔ JSON file detected: $jsonPath');
     } catch (e) {
       print('Error: $e');
       return;
     }
 
-    // 3. Handle Sync Option
-    String? choice;
-    if (isGenerateCommand && hasConfig) {
-      choice = '1'; // Default to Model generation
-      if (config.generateService) choice = '2';
-      if (config.generateRepository) choice = '3';
-    } else {
-      print('\nWhat do you want to do?');
-      print('1. Generate Model');
-      print('2. Generate Model + Service');
-      print('3. Generate Model + Service + Repository');
-      print('4. Sync Existing Models');
-      stdout.write('Choice (1-4, default: 1): ');
-      choice = stdin.readLineSync()?.trim();
-    }
-    
+    // 3. Menu
+    print('\nWhat do you want to do?');
+    print('1. Generate Model');
+    print('2. Generate Model + Service');
+    print('3. Generate Model + Service + Repository');
+    print('4. Sync Existing Models');
+    stdout.write('Choice (1-4, default: 1): ');
+    String? choice = stdin.readLineSync()?.trim();
     if (choice == null || choice.isEmpty) choice = '1';
 
-    // 4. Handle Sync
     if (choice == '4') {
-      _handleSync(json, jsonPath);
+      _handleSync(json);
       return;
     }
 
-    // 5. Get Model Name
-    String? modelNameInput;
-    if (isGenerateCommand && hasConfig) {
-      // In config mode without prompt, we might need a way to know the model name.
-      // Usually, config might specify a default or we can infer from filename?
-      // The requirement didn't specify model_name in YAML.
-      // Let's ask for it if not provided in arguments or something?
-      // Actually, if it's "generate" command, maybe we should still ask for the name?
-      // "Skip most prompts" - name is probably essential.
-      stdout.write('Enter model name: ');
-      modelNameInput = stdin.readLineSync()?.trim();
-    } else {
-      stdout.write('Enter model name: ');
-      modelNameInput = stdin.readLineSync()?.trim();
-    }
-
+    // Get Model Name
+    stdout.write('Enter model name: ');
+    String? modelNameInput = stdin.readLineSync()?.trim();
     if (modelNameInput == null || modelNameInput.isEmpty) {
-      print('Model name is required!');
+      print('Error: Model name is required!');
       return;
     }
     final modelName = StringUtils.capitalize(modelNameInput);
 
-    // 6. Generate
+    _runGeneration(json, modelName, choice, false);
+  }
+
+  /// Generate based on config file
+  void startGenerate() {
+    if (!ConfigLoader.exists()) {
+      print('Warning: api_model_generator.yaml not found. Falling back to interactive mode.');
+      startInteractive();
+      return;
+    }
+
+    print('🚀 Generating from configuration...');
+    
+    final jsonPath = 'response.json'; // Default
+    if (!File(jsonPath).existsSync()) {
+      print('Error: $jsonPath not found.');
+      return;
+    }
+
+    dynamic json;
+    try {
+      json = JsonParser.parseFile(jsonPath);
+    } catch (e) {
+      print('Error parsing $jsonPath: $e');
+      return;
+    }
+
+    stdout.write('Enter model name: ');
+    final modelNameInput = stdin.readLineSync()?.trim();
+    if (modelNameInput == null || modelNameInput.isEmpty) {
+      print('Error: Model name is required!');
+      return;
+    }
+    final modelName = StringUtils.capitalize(modelNameInput);
+
+    String choice = '1';
+    if (config.generateService) choice = '2';
+    if (config.generateRepository) choice = '3';
+
+    _runGeneration(json, modelName, choice, true);
+  }
+
+  /// Direct sync mode
+  void startSync() {
+    print('🚀 Starting Model Sync...');
+    
+    stdout.write('Enter JSON file path (default: response.json): ');
+    String? jsonPath = stdin.readLineSync()?.trim();
+    if (jsonPath == null || jsonPath.isEmpty) jsonPath = 'response.json';
+
+    if (!File(jsonPath).existsSync()) {
+      print('Error: $jsonPath not found.');
+      return;
+    }
+
+    dynamic json;
+    try {
+      json = JsonParser.parseFile(jsonPath);
+    } catch (e) {
+      print('Error parsing $jsonPath: $e');
+      return;
+    }
+
+    _handleSync(json);
+  }
+
+  void _runGeneration(dynamic json, String modelName, String choice, bool useConfig) {
     try {
       final registry = ModelRegistry();
       final baseObject = JsonParser.extractBaseObject(json);
@@ -116,7 +152,7 @@ class InteractiveCLI {
       final baseModelFileName = StringUtils.camelToSnake(modelName);
 
       // Service Generation
-      if (choice == '2' || choice == '3' || config.generateService) {
+      if (choice == '2' || choice == '3' || (useConfig && config.generateService)) {
         final serviceGen = ServiceGenerator(
           modelName: modelName,
           isList: isList,
@@ -128,7 +164,7 @@ class InteractiveCLI {
       }
 
       // Repository Generation
-      if (choice == '3' || config.generateRepository) {
+      if (choice == '3' || (useConfig && config.generateRepository)) {
         final repoGen = RepositoryGenerator(
           modelName: modelName,
           isList: isList,
@@ -140,18 +176,18 @@ class InteractiveCLI {
       }
 
       print('-----------------------------------------');
-      print('Success! Generation complete.');
+      print('✔ Success! Generation complete.');
       print('-----------------------------------------');
     } catch (e) {
       print('Failed to generate: $e');
     }
   }
 
-  void _handleSync(dynamic json, String jsonPath) {
+  void _handleSync(dynamic json) {
      stdout.write('Enter existing model name to sync: ');
      final modelNameInput = stdin.readLineSync()?.trim();
      if (modelNameInput == null || modelNameInput.isEmpty) {
-       print('Model name is required for sync!');
+       print('Error: Model name is required for sync!');
        return;
      }
      final modelName = StringUtils.capitalize(modelNameInput);
