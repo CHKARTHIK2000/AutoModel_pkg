@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:cli_spin/cli_spin.dart';
 
 class ProgressIndicator {

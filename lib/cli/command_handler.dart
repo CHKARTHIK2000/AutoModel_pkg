@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:args/args.dart';
 import '../config/config_loader.dart';
 import 'interactive_cli.dart';
-import '../utils/string_utils.dart';
 import '../writer/dart_writer.dart';
 
 class CommandHandler {

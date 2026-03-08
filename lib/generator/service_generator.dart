@@ -1,5 +1,3 @@
-import '../utils/string_utils.dart';
-
 class ServiceGenerator {
   final String modelName;
   final bool isList;

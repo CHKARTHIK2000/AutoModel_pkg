@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 class ModelRegistry {
   /// Map of canonical structure signature to model name
   /// Example: 'city:String,zip:String' -> 'ShippingAddress'

@@ -1,7 +1,7 @@
 name: api_model_generator
-description: A starting point for Dart libraries or applications.
+description: A powerful CLI tool to generate type-safe Models, Services, Repositories, and API Clients from JSON responses.
 version: 1.0.0
-# repository: https://github.com/my_org/my_repo
+repository: https://github.com/CHKARTHIK2000/AutoModel_pkg
 
 environment:
   sdk: ^3.9.0
