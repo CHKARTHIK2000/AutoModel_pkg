@@ -5,14 +5,17 @@ import '../generator/model_registry.dart';
 import '../generator/service_generator.dart';
 import '../generator/repository_generator.dart';
 import '../generator/api_client_generator.dart';
+import '../generator/batch_generator.dart';
 import '../generator/model_sync.dart';
 import '../config/config_loader.dart';
 import '../writer/dart_writer.dart';
 import '../utils/string_utils.dart';
+import 'progress_indicator.dart';
 import 'package:path/path.dart' as p;
 
 class InteractiveCLI {
   final GeneratorConfig config;
+  final ProgressIndicator _progress = ProgressIndicator();
 
   InteractiveCLI(this.config);
 
@@ -27,13 +30,25 @@ class InteractiveCLI {
     print('2. Generate Model + Service');
     print('3. Generate Model + Service + Repository');
     print('4. Generate API Client (from config)');
-    print('5. Sync Existing Models');
-    stdout.write('Choice (1-5, default: 1): ');
+    print('5. Batch Generate from Folder');
+    print('6. Sync Existing Models');
+    stdout.write('Choice (1-6, default: 1): ');
     String? choiceInput = stdin.readLineSync()?.trim();
     if (choiceInput == null || choiceInput.isEmpty) choiceInput = '1';
 
     if (choiceInput == '4') {
       startApiGenerate();
+      return;
+    }
+
+    if (choiceInput == '5') {
+      stdout.write('Enter folder path: ');
+      String? folderPath = stdin.readLineSync()?.trim();
+      if (folderPath == null || folderPath.isEmpty) {
+        print('Error: Folder path is required!');
+        return;
+      }
+      startBatch(folderPath);
       return;
     }
 
@@ -47,14 +62,15 @@ class InteractiveCLI {
     // 2. Parse JSON
     dynamic json;
     try {
+      _progress.start('Reading JSON file...');
       json = JsonParser.parseFile(jsonPath);
-      print('✔ JSON file detected: $jsonPath');
+      _progress.success('JSON file detected: $jsonPath');
     } catch (e) {
-      print('Error: $e');
+      _progress.error('Error: $e');
       return;
     }
 
-    if (choiceInput == '5') {
+    if (choiceInput == '6') {
       _handleSync(json);
       return;
     }
@@ -89,9 +105,11 @@ class InteractiveCLI {
 
     dynamic json;
     try {
+      _progress.start('Parsing $jsonPath...');
       json = JsonParser.parseFile(jsonPath);
+      _progress.success('$jsonPath parsed');
     } catch (e) {
-      print('Error parsing $jsonPath: $e');
+      _progress.error('Error parsing $jsonPath: $e');
       return;
     }
 
@@ -120,18 +138,26 @@ class InteractiveCLI {
     }
 
     try {
+      _progress.start('Building API Client...');
       final apiGenerator = ApiClientGenerator(config);
       final code = apiGenerator.build();
       final fullPath = p.join(config.apiPath, 'api_client.dart');
       
       DartWriter.write(fullPath, code);
+      _progress.success('API Client generated at $fullPath');
       
       print('-----------------------------------------');
-      print('✔ Success! API Client generated.');
+      _progress.printFinalSuccess('API Client generation complete.');
       print('-----------------------------------------');
     } catch (e) {
-      print('Failed to generate API Client: $e');
+      _progress.error('Failed to generate API Client: $e');
     }
+  }
+
+  /// Batch Generation
+  void startBatch(String folderPath) {
+    final batchGen = BatchGenerator(folderPath, config);
+    batchGen.run();
   }
 
   /// Direct sync mode
@@ -149,9 +175,11 @@ class InteractiveCLI {
 
     dynamic json;
     try {
+      _progress.start('Reading $jsonPath...');
       json = JsonParser.parseFile(jsonPath);
+      _progress.success('$jsonPath loaded');
     } catch (e) {
-      print('Error parsing $jsonPath: $e');
+      _progress.error('Error parsing $jsonPath: $e');
       return;
     }
 
@@ -159,7 +187,13 @@ class InteractiveCLI {
   }
 
   void _runGeneration(dynamic json, String modelName, String choice, bool useConfig) {
+    int modelsCreated = 0;
+    int modelsReused = 0;
+    int servicesCreated = 0;
+    int repositoriesCreated = 0;
+
     try {
+      _progress.start('Generating models...');
       final registry = ModelRegistry();
       final baseObject = JsonParser.extractBaseObject(json);
       final isList = json is List;
@@ -170,7 +204,10 @@ class InteractiveCLI {
       final allModels = baseBuilder.getAllModels();
       
       for (var model in allModels) {
-        if (registry.isProcessed(model.modelName)) continue;
+        if (registry.isProcessed(model.modelName)) {
+          modelsReused++;
+          continue;
+        }
         
         final fileName = StringUtils.camelToSnake(model.modelName);
         final fullPath = p.join(modelsOutputDir, '$fileName.dart');
@@ -178,12 +215,16 @@ class InteractiveCLI {
         final code = model.build();
         DartWriter.write(fullPath, code);
         registry.markProcessed(model.modelName);
+        _progress.info('${model.modelName} model generated');
+        modelsCreated++;
       }
+      _progress.success('Model generation complete');
 
       final baseModelFileName = StringUtils.camelToSnake(modelName);
 
       // Service Generation
       if (choice == '2' || choice == '3' || (useConfig && config.generateService)) {
+        _progress.start('Generating service...');
         final serviceGen = ServiceGenerator(
           modelName: modelName,
           isList: isList,
@@ -192,10 +233,13 @@ class InteractiveCLI {
         final serviceCode = serviceGen.build();
         final serviceFileName = StringUtils.camelToSnake('${modelName}Service');
         DartWriter.write(p.join(config.servicesPath, '$serviceFileName.dart'), serviceCode);
+        _progress.success('Service generated');
+        servicesCreated++;
       }
 
       // Repository Generation
       if (choice == '3' || (useConfig && config.generateRepository)) {
+        _progress.start('Generating repository...');
         final repoGen = RepositoryGenerator(
           modelName: modelName,
           isList: isList,
@@ -204,13 +248,19 @@ class InteractiveCLI {
         final repoCode = repoGen.build();
         final repoFileName = StringUtils.camelToSnake('${modelName}Repository');
         DartWriter.write(p.join(config.repositoriesPath, '$repoFileName.dart'), repoCode);
+        _progress.success('Repository generated');
+        repositoriesCreated++;
       }
 
+      _progress.printSummaryHeader();
+      print('Models created:      $modelsCreated');
+      print('Models reused:       $modelsReused');
+      print('Services created:    $servicesCreated');
+      print('Repositories created: $repositoriesCreated');
       print('-----------------------------------------');
-      print('✔ Success! Generation complete.');
-      print('-----------------------------------------');
+      _progress.printFinalSuccess('Generation complete.');
     } catch (e) {
-      print('Failed to generate: $e');
+      _progress.error('Failed to generate: $e');
     }
   }
 

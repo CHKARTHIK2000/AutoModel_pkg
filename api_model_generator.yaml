@@ -1,9 +1,0 @@
-models_path: lib/models
-services_path: lib/services
-repositories_path: lib/repositories
-
-generate:
-  service: true
-  repository: true
-
-http_client: http

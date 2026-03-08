@@ -5,16 +5,20 @@ import 'model_builder.dart';
 import 'model_registry.dart';
 import '../utils/string_utils.dart';
 import '../writer/dart_writer.dart';
+import '../cli/progress_indicator.dart';
 import 'package:path/path.dart' as p;
 
 class ModelSync {
   /// Synchronizes an existing Dart model file with a new JSON response.
   static void sync(String modelFilePath, dynamic newJson, String modelName, ModelRegistry registry) {
+    final ProgressIndicator progress = ProgressIndicator();
+    
     final file = File(modelFilePath);
     if (!file.existsSync()) {
       throw Exception('Model file not found: $modelFilePath');
     }
 
+    progress.start('Analyzing existing model...');
     final content = file.readAsStringSync();
     final existingFields = _extractFields(content);
     
@@ -31,8 +35,10 @@ class ModelSync {
       }
     });
 
+    progress.stop();
+
     if (newFields.isEmpty) {
-      print('No new fields detected in $modelName.');
+      print('ℹ No new fields detected in $modelName.');
       return;
     }
 
@@ -43,10 +49,11 @@ class ModelSync {
     stdout.write('\nContinue updating $modelName? (y/n, default: y): ');
     final input = stdin.readLineSync()?.toLowerCase();
     if (input == 'n') {
-      print('Sync cancelled for $modelName.');
+      print('⚠ Sync cancelled for $modelName.');
       return;
     }
 
+    progress.start('Updating models...');
     // Use ModelBuilder to generate the updated model and any new nested models
     final builder = ModelBuilder(modelName, baseObject, registry);
     final allModels = builder.getAllModels();
@@ -55,7 +62,6 @@ class ModelSync {
     
     for (var model in allModels) {
       // If it's the model we're syncing, always write it.
-      // If it's a nested model, check if it was already processed or if it exists.
       if (model.modelName == modelName) {
          final code = model.build();
          DartWriter.write(modelFilePath, code);
@@ -76,7 +82,7 @@ class ModelSync {
       }
     }
     
-    print('Successfully synced $modelName.');
+    progress.success('Successfully synced $modelName.');
   }
 
   /// Extracts field names and types from an existing Dart model file content.

@@ -29,6 +29,9 @@ class CommandHandler {
     parser.addCommand('api');
     parser.addCommand('a'); // Alias for api
     
+    parser.addCommand('batch');
+    parser.addCommand('b'); // Alias for batch
+    
     parser.addCommand('init');
     parser.addCommand('help');
     
@@ -73,6 +76,16 @@ class CommandHandler {
         case 'api':
         case 'a':
           cli.startApiGenerate();
+          break;
+        case 'batch':
+        case 'b':
+          final rest = results.command!.rest;
+          if (rest.isEmpty) {
+            print('Error: Please provide a folder path for batch generation.');
+            print('Usage: amg batch <folder_path>');
+            return;
+          }
+          cli.startBatch(rest.first);
           break;
         case 'init':
           _handleInit();
@@ -129,6 +142,7 @@ endpoints:
     print('  sync (s)           Sync existing models with JSON response');
     print('  interactive (i)    Start interactive CLI mode');
     print('  api (a)            Generate API client from config endpoints');
+    print('  batch (b)          Generate models from a folder of JSON files');
     print('  init               Create configuration file');
     print('  help               Show help information');
     print('  version            Show CLI version');
