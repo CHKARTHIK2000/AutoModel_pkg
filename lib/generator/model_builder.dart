@@ -1,19 +1,19 @@
 import '../utils/string_utils.dart';
 import 'type_detector.dart';
+import 'model_registry.dart';
 
 class ModelBuilder {
   final String modelName;
   final Map<String, dynamic> json;
-  final List<ModelBuilder> nestedModels = [];
+  final ModelRegistry? registry;
 
-  ModelBuilder(this.modelName, this.json);
+  ModelBuilder(this.modelName, this.json, [this.registry]);
 
   /// Generates the complete Dart code for the model class
   String build() {
     final sb = StringBuffer();
 
     // 1. Imports (if needed, e.g., for nested models in separate files)
-    // For now, let's keep it simple. If we want separate files, we need to know filenames.
     _buildImports(sb);
 
     // 2. Class Definition
@@ -43,19 +43,28 @@ class ModelBuilder {
   }
 
   void _buildImports(StringBuffer sb) {
+    final imports = <String>{};
     for (var entry in json.entries) {
       if (TypeDetector.isComplexType(entry.value)) {
-        final nestedName = TypeDetector.getModelName(entry.value, entry.key);
-        final fileName = StringUtils.camelToSnake(nestedName);
-        sb.writeln("import '$fileName.dart';");
+        final nestedName = TypeDetector.getModelName(entry.value, entry.key, registry);
+        if (nestedName != modelName) {
+           final fileName = StringUtils.camelToSnake(nestedName);
+           imports.add("import '$fileName.dart';");
+        }
       }
     }
-    if (sb.isNotEmpty) sb.writeln();
+    
+    if (imports.isNotEmpty) {
+      for (var importLine in imports.toList()..sort()) {
+        sb.writeln(importLine);
+      }
+      sb.writeln();
+    }
   }
 
   void _buildFields(StringBuffer sb) {
     json.forEach((key, value) {
-      final type = TypeDetector.detectType(value, key);
+      final type = TypeDetector.detectType(value, key, registry);
       final variableName = StringUtils.snakeToCamel(key);
       sb.writeln('  final $type $variableName;');
     });
@@ -76,16 +85,15 @@ class ModelBuilder {
     
     json.forEach((key, value) {
       final variableName = StringUtils.snakeToCamel(key);
-      final type = TypeDetector.detectType(value, key);
+      final type = TypeDetector.detectType(value, key, registry);
       
       if (value is Map) {
          sb.writeln("      $variableName: $type.fromJson(json['$key']),");
       } else if (value is List) {
          if (value.isNotEmpty && value.first is Map) {
-           final innerType = TypeDetector.detectType(value.first, key);
+           final innerType = TypeDetector.detectType(value.first, key, registry);
            sb.writeln("      $variableName: (json['$key'] as List).map((i) => $innerType.fromJson(i)).toList(),");
          } else {
-           final type = TypeDetector.detectType(value, key);
            // type is List<Something>
            final innerType = type.replaceAll('List<', '').replaceAll('>', '');
            sb.writeln("      $variableName: List<$innerType>.from(json['$key']),");
@@ -125,12 +133,12 @@ class ModelBuilder {
     
     json.forEach((key, value) {
       if (value is Map) {
-        final nestedName = TypeDetector.getModelName(value, key);
-        final nestedBuilder = ModelBuilder(nestedName, value as Map<String, dynamic>);
+        final nestedName = TypeDetector.getModelName(value, key, registry);
+        final nestedBuilder = ModelBuilder(nestedName, value as Map<String, dynamic>, registry);
         allModels.addAll(nestedBuilder.getAllModels());
       } else if (value is List && value.isNotEmpty && value.first is Map) {
-        final nestedName = TypeDetector.getModelName(value.first, key);
-        final nestedBuilder = ModelBuilder(nestedName, value.first as Map<String, dynamic>);
+        final nestedName = TypeDetector.getModelName(value.first, key, registry);
+        final nestedBuilder = ModelBuilder(nestedName, value.first as Map<String, dynamic>, registry);
         allModels.addAll(nestedBuilder.getAllModels());
       }
     });

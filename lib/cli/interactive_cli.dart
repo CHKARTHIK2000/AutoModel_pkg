@@ -1,6 +1,7 @@
 import 'dart:io';
 import '../generator/json_parser.dart';
 import '../generator/model_builder.dart';
+import '../generator/model_registry.dart';
 import '../writer/dart_writer.dart';
 import '../utils/string_utils.dart';
 import 'package:path/path.dart' as p;
@@ -45,21 +46,21 @@ class InteractiveCLI {
 
     // 5. Generate Models
     try {
+      final registry = ModelRegistry();
       final baseObject = JsonParser.extractBaseObject(json);
-      final baseBuilder = ModelBuilder(modelName, baseObject);
+      final baseBuilder = ModelBuilder(modelName, baseObject, registry);
       
       final allModels = baseBuilder.getAllModels();
-      final processedModelNames = <String>{};
-
+      
       for (var model in allModels) {
-        if (processedModelNames.contains(model.modelName)) continue;
+        if (registry.isProcessed(model.modelName)) continue;
         
         final fileName = StringUtils.camelToSnake(model.modelName);
         final fullPath = p.join(outputDir, '$fileName.dart');
         
         final code = model.build();
         DartWriter.write(fullPath, code);
-        processedModelNames.add(model.modelName);
+        registry.markProcessed(model.modelName);
       }
 
       print('-----------------------------------------');
