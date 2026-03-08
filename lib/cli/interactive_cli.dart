@@ -4,6 +4,7 @@ import '../generator/model_builder.dart';
 import '../generator/model_registry.dart';
 import '../generator/service_generator.dart';
 import '../generator/repository_generator.dart';
+import '../generator/api_client_generator.dart';
 import '../generator/model_sync.dart';
 import '../config/config_loader.dart';
 import '../writer/dart_writer.dart';
@@ -19,6 +20,22 @@ class InteractiveCLI {
   void startInteractive() {
     print('🚀 Flutter API Model Generator');
     print('-----------------------------------------');
+
+    // Menu
+    print('\nWhat do you want to do?');
+    print('1. Generate Model');
+    print('2. Generate Model + Service');
+    print('3. Generate Model + Service + Repository');
+    print('4. Generate API Client (from config)');
+    print('5. Sync Existing Models');
+    stdout.write('Choice (1-5, default: 1): ');
+    String? choiceInput = stdin.readLineSync()?.trim();
+    if (choiceInput == null || choiceInput.isEmpty) choiceInput = '1';
+
+    if (choiceInput == '4') {
+      startApiGenerate();
+      return;
+    }
 
     // 1. Get JSON file path
     stdout.write('Enter JSON file path (default: response.json): ');
@@ -37,17 +54,7 @@ class InteractiveCLI {
       return;
     }
 
-    // 3. Menu
-    print('\nWhat do you want to do?');
-    print('1. Generate Model');
-    print('2. Generate Model + Service');
-    print('3. Generate Model + Service + Repository');
-    print('4. Sync Existing Models');
-    stdout.write('Choice (1-4, default: 1): ');
-    String? choice = stdin.readLineSync()?.trim();
-    if (choice == null || choice.isEmpty) choice = '1';
-
-    if (choice == '4') {
+    if (choiceInput == '5') {
       _handleSync(json);
       return;
     }
@@ -61,7 +68,7 @@ class InteractiveCLI {
     }
     final modelName = StringUtils.capitalize(modelNameInput);
 
-    _runGeneration(json, modelName, choice, false);
+    _runGeneration(json, modelName, choiceInput, false);
   }
 
   /// Generate based on config file
@@ -101,6 +108,30 @@ class InteractiveCLI {
     if (config.generateRepository) choice = '3';
 
     _runGeneration(json, modelName, choice, true);
+  }
+
+  /// API Client Generation
+  void startApiGenerate() {
+    print('🚀 Generating API Client...');
+    
+    if (config.endpoints.isEmpty) {
+      print('Error: No endpoints defined in api_model_generator.yaml');
+      return;
+    }
+
+    try {
+      final apiGenerator = ApiClientGenerator(config);
+      final code = apiGenerator.build();
+      final fullPath = p.join(config.apiPath, 'api_client.dart');
+      
+      DartWriter.write(fullPath, code);
+      
+      print('-----------------------------------------');
+      print('✔ Success! API Client generated.');
+      print('-----------------------------------------');
+    } catch (e) {
+      print('Failed to generate API Client: $e');
+    }
   }
 
   /// Direct sync mode

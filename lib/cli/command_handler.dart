@@ -26,6 +26,9 @@ class CommandHandler {
     parser.addCommand('interactive');
     parser.addCommand('i'); // Alias for interactive
     
+    parser.addCommand('api');
+    parser.addCommand('a'); // Alias for api
+    
     parser.addCommand('init');
     parser.addCommand('help');
     
@@ -67,6 +70,10 @@ class CommandHandler {
         case 'i':
           cli.startInteractive();
           break;
+        case 'api':
+        case 'a':
+          cli.startApiGenerate();
+          break;
         case 'init':
           _handleInit();
           break;
@@ -94,6 +101,16 @@ generate:
   repository: true
 
 http_client: http
+
+api:
+  base_url: https://api.example.com
+
+endpoints:
+  - name: getUsers
+    method: GET
+    path: /users
+    response_model: User
+    response_type: list
 ''';
     
     final file = File('api_model_generator.yaml');
@@ -111,6 +128,7 @@ http_client: http
     print('  generate (g)       Generate models/services using config file');
     print('  sync (s)           Sync existing models with JSON response');
     print('  interactive (i)    Start interactive CLI mode');
+    print('  api (a)            Generate API client from config endpoints');
     print('  init               Create configuration file');
     print('  help               Show help information');
     print('  version            Show CLI version');
